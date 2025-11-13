@@ -70,21 +70,24 @@ class ApplyAnomalyRank : BurpExtension, ContextMenuItemsProvider {
 
     @OptIn(ExperimentalTime::class)
     private fun applyAnomalyRank() {
-        val rankedRequests = api.utilities().rankingUtils().rank(requestResponses)
-        val timestamp = Clock.System.now().epochSeconds
-        val maxRank = rankedRequests.maxOf { it.rank() }
-        val maxLength = maxRank.toString().length
+        Thread.ofVirtual().start {
+            val rankedRequests = api.utilities().rankingUtils().rank(requestResponses)
+            val timestamp = Clock.System.now().epochSeconds
+            val maxRank = rankedRequests.maxOf { it.rank() }
+            val maxLength = maxRank.toString().length
 
-        for (i in requestResponses.indices) {
-
-
-            if (i < rankedRequests.size) {
-                val floatRank = rankedRequests[i].rank()
+            for (i in requestResponses.indices) {
 
 
-                requestResponses[i].annotations().setNotes("Anom Rank $timestamp: ${String.format("%0${maxLength}d", floatRank)}")
+                if (i < rankedRequests.size) {
+                    val floatRank = rankedRequests[i].rank()
+
+
+                    requestResponses[i].annotations()
+                        .setNotes("Anom Rank $timestamp: ${String.format("%0${maxLength}d", floatRank)}")
+                }
+
             }
-
         }
     }
 
