@@ -6,25 +6,20 @@ plugins {
     // Provides the shadowJar task in Gradle
     // https://plugins.gradle.org/plugin/com.github.johnrengelman.shadow
     id("com.github.johnrengelman.shadow") version "8.1.1"
-
 }
 
-//Change this to reflect your package namespace
+// Change this to reflect your package namespace
 group = "com.nickcoblentz.montoya"
-version = "0.1.0"
+
+version = "0.1.8"
 
 repositories {
-    //add maven local in case you want to build some reusable libraries and host them within your home directory
+    // add maven local in case you want to build some reusable libraries and host them within your
+    // home directory
     mavenLocal()
     mavenCentral()
 
-
-    maven(url="https://jitpack.io") {
-        content {
-            includeGroup("com.github.ncoblentz")
-        }
-    }
-
+    maven(url = "https://jitpack.io") { content { includeGroup("com.github.ncoblentz") } }
 }
 
 dependencies {
@@ -32,17 +27,14 @@ dependencies {
 
     // Include the Montoya API from Maven Central:
     // https://central.sonatype.com/artifact/net.portswigger.burp.extensions/montoya-api
-    // Check for latest version: https://central.sonatype.com/artifact/net.portswigger.burp.extensions/montoya-api/versions
+    // Check for latest version:
+    // https://central.sonatype.com/artifact/net.portswigger.burp.extensions/montoya-api/versions
     implementation("net.portswigger.burp.extensions:montoya-api:2025.11")
 
     // Enable these if you want to use https://github.com/ncoblentz/BurpMontoyaLibrary
     implementation("com.github.ncoblentz:BurpMontoyaLibrary:0.2.0")
 }
 
-tasks.test {
-    useJUnitPlatform()
-}
+tasks.test { useJUnitPlatform() }
 
-kotlin {
-    jvmToolchain(24)
-}
+kotlin { jvmToolchain(24) }

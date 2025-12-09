@@ -3,69 +3,50 @@ import burp.api.montoya.MontoyaApi
 import burp.api.montoya.http.message.HttpRequestResponse
 import burp.api.montoya.ui.contextmenu.ContextMenuEvent
 import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider
-import burp.api.montoya.ui.contextmenu.MessageEditorHttpRequestResponse
-import burp.api.montoya.ui.settings.SettingsPanelBuilder
-import burp.api.montoya.ui.settings.SettingsPanelPersistence
-import com.nickcoblentz.montoya.LogLevel
-import com.nickcoblentz.montoya.MontoyaLogger
-import com.nickcoblentz.montoya.settings.PanelSettingsDelegate
 import java.awt.Component
 import javax.swing.JMenuItem
+import javax.swing.SwingUtilities
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
-
-// Montoya API Documentation: https://portswigger.github.io/burp-extensions-montoya-api/javadoc/burp/api/montoya/MontoyaApi.html
+// Montoya API Documentation:
+// https://portswigger.github.io/burp-extensions-montoya-api/javadoc/burp/api/montoya/MontoyaApi.html
 // Montoya Extension Examples: https://github.com/PortSwigger/burp-extensions-montoya-api-examples
 
 class ApplyAnomalyRank : BurpExtension, ContextMenuItemsProvider {
     private val requestResponses = mutableListOf<HttpRequestResponse>()
     private lateinit var api: MontoyaApi
-    private lateinit var logger: MontoyaLogger
     private val applyAnomalyRankMenuItem = JMenuItem("Apply Anomaly Rank")
 
-    //private val projectSettings : MyProjectSettings by lazy { MyProjectSettings() }
+    // private val projectSettings : MyProjectSettings by lazy { MyProjectSettings() }
 
     companion object {
         const val EXTENSION_NAME = "Apply Anomaly Rank"
     }
 
-
-
-
     override fun initialize(api: MontoyaApi?) {
 
-        // In Kotlin, you have to explicitly define variables as nullable with a ? as in MontoyaApi? above
-        // This is necessary because the Java Library allows null to be passed into this function
-        // requireNotNull is a built-in Kotlin function to check for null that throws an Illegal Argument exception if it is null
-        // after checking for null, the Kotlin compiler knows that any reference to api  or this.api below will not = null and you no longer have to check it
-        // Finally, assign the MontoyaApi instance (not nullable) to a class property to be accessible from other functions in this class
         this.api = requireNotNull(api) { "api : MontoyaApi is not allowed to be null" }
-        // This will print to Burp Suite's Extension output and can be used to debug whether the extension loaded properly
-        logger = MontoyaLogger(api, LogLevel.DEBUG)
-        logger.debugLog("Started loading the extension...")
-
+        // This will print to Burp Suite's Extension output and can be used to debug whether the
+        // extension loaded properly
+        api.logging().logToOutput("Started loading the extension v0.1.8...")
 
         // Name our extension when it is displayed inside of Burp Suite
         api.extension().setName(EXTENSION_NAME)
 
         // Code for setting up your extension starts here...
 
-        applyAnomalyRankMenuItem.addActionListener {
-            e -> applyAnomalyRank()
-        }
+        applyAnomalyRankMenuItem.addActionListener { e -> applyAnomalyRank() }
 
         api.userInterface().registerContextMenuItemsProvider(this)
 
         // Just a simple hello world to start with
 
-
         // Code for setting up your extension ends here
-        //api.userInterface().registerSettingsPanel(projectSettings.settingsPanel)
+        // api.userInterface().registerSettingsPanel(projectSettings.settingsPanel)
 
         // See logging comment above
-        logger.debugLog("...Finished loading the extension")
-
+        api.logging().logToOutput("...Finished loading the extension")
     }
 
     @OptIn(ExperimentalTime::class)
@@ -75,47 +56,48 @@ class ApplyAnomalyRank : BurpExtension, ContextMenuItemsProvider {
             val timestamp = Clock.System.now().epochSeconds
             val maxRank = rankedRequests.maxOf { it.rank() }
             val maxLength = maxRank.toString().length
+            val resultsForUi = mutableListOf<AnomalyRankResultsTable.ResultEntry>()
 
             for (i in requestResponses.indices) {
-
 
                 if (i < rankedRequests.size) {
                     val floatRank = rankedRequests[i].rank()
 
-
-                    requestResponses[i].annotations()
-                        .setNotes("Anom Rank $timestamp: ${String.format("%0${maxLength}d", floatRank)}")
+                    resultsForUi.add(
+                            AnomalyRankResultsTable.ResultEntry(
+                                    rank = floatRank,
+                                    method = requestResponses[i].request().method(),
+                                    url = requestResponses[i].request().url(),
+                                    statusCode = requestResponses[i].response()?.statusCode() ?: 0,
+                                    requestResponse = requestResponses[i]
+                            )
+                    )
                 }
+            }
 
+            SwingUtilities.invokeLater {
+                val resultsTable = AnomalyRankResultsTable(api, resultsForUi)
+                resultsTable.isVisible = true
             }
         }
     }
 
     override fun provideMenuItems(event: ContextMenuEvent?): List<Component?> {
-        event?.let { nonNullEvent ->
-            event.selectedRequestResponses().let { selectedRequestResponse ->
+        event?.let {
+            val selectedList = it.selectedRequestResponses()
+            if (selectedList.isNotEmpty()) {
                 requestResponses.clear()
-                requestResponses.addAll(selectedRequestResponse)
+                requestResponses.addAll(selectedList)
+                return listOf(applyAnomalyRankMenuItem)
+            }
+
+            val editorRR = it.messageEditorRequestResponse()
+            if (editorRR.isPresent) {
+                requestResponses.clear()
+                requestResponses.add(editorRR.get().requestResponse())
                 return listOf(applyAnomalyRankMenuItem)
             }
         }
-
         return emptyList()
     }
 }
-
-
-//class MyProjectSettings() {
-//    val settingsPanelBuilder : SettingsPanelBuilder = SettingsPanelBuilder.settingsPanel()
-//        .withPersistence(SettingsPanelPersistence.PROJECT_SETTINGS) // you can change this to user settings if you wish
-//        .withTitle(YourBurpKotlinExtensionName.EXTENSION_NAME)
-//        .withDescription("Add your description here")
-//        .withKeywords("Add Keywords","Here")
-//
-//    private val settingsManager = PanelSettingsDelegate(settingsPanelBuilder)
-//
-//    val example1Setting: String by settingsManager.stringSetting("An example string setting here", "test default value here")
-//    val example2Setting: Boolean by settingsManager.booleanSetting("An example boolean setting here", false)
-//
-//    val settingsPanel = settingsManager.buildSettingsPanel()
-//}
