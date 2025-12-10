@@ -48,12 +48,71 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
         val topPanel = JPanel(BorderLayout(10, 10))
         val titleLabel = JLabel("Anomaly Analysis Results")
         titleLabel.font = Font("SansSerif", Font.BOLD, 18)
-        titleLabel.foreground = Color(50, 50, 50)
+        // titleLabel.foreground = Color(50, 50, 50) // Removed hardcoded color for theme
+        // compatibility
 
         val searchPanel = JPanel(FlowLayout(FlowLayout.RIGHT))
+
+        // Add Filter Button & Menu
+        val filterButton = JButton("Add Filter")
+        val filterMenu = JPopupMenu()
+
+        // --- Logic Operators ---
+        val logicMenu = JMenu("Logic")
+        val andItem = JMenuItem("AND")
+        andItem.addActionListener { appendFilter(" AND ", true) }
+        val orItem = JMenuItem("OR")
+        orItem.addActionListener { appendFilter(" OR ", true) }
+        logicMenu.add(andItem)
+        logicMenu.add(orItem)
+
+        // --- Fields ---
+        val methodMenu = JMenu("Method")
+        listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS").forEach { method ->
+            val item = JMenuItem(method)
+            item.addActionListener { appendFilter("method:$method", false) }
+            methodMenu.add(item)
+        }
+
+        val statusMenu = JMenu("Status")
+        listOf("200", "201", "301", "302", "400", "401", "403", "404", "500", "502", "503")
+                .forEach { code ->
+                    val item = JMenuItem(code)
+                    item.addActionListener { appendFilter("status:$code", false) }
+                    statusMenu.add(item)
+                }
+
+        val rankMenu = JMenu("Rank")
+        listOf(">= 5", ">= 10", ">= 20", ">= 50", ">= 100").forEach { label ->
+            val value = label.replace(" ", "")
+            val item = JMenuItem(label)
+            item.addActionListener { appendFilter("rank:$value", false) }
+            rankMenu.add(item)
+        }
+        rankMenu.addSeparator()
+        val rankCustomItem = JMenuItem("Custom...")
+        rankCustomItem.addActionListener { appendFilter("rank:", false) }
+        rankMenu.add(rankCustomItem)
+
+        filterMenu.add(logicMenu)
+        filterMenu.addSeparator()
+        filterMenu.add(methodMenu)
+        filterMenu.add(statusMenu)
+        filterMenu.add(rankMenu)
+
+        // Simple actions for fields that need input
+        val urlItem = JMenuItem("URL (Custom)")
+        urlItem.addActionListener { appendFilter("url:", false) }
+        filterMenu.add(urlItem)
+
+        filterButton.addActionListener { filterMenu.show(filterButton, 0, filterButton.height) }
+
         val searchLabel = JLabel("Filter:")
         searchField = JTextField(20)
-        searchField.toolTipText = "Type to filter results..."
+        searchField.toolTipText =
+                "Supports: field:value, AND, OR (e.g., method:POST AND status:200)"
+
+        searchPanel.add(filterButton)
         searchPanel.add(searchLabel)
         searchPanel.add(searchField)
 
@@ -82,8 +141,10 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
         val table = JTable(tableModel)
         table.rowHeight = 25
         table.font = Font("SansSerif", Font.PLAIN, 13)
-        table.intercellSpacing = Dimension(5, 5)
-        table.showVerticalLines = false
+        table.intercellSpacing = Dimension(1, 1)
+        table.showVerticalLines = true
+        table.showHorizontalLines = true
+        table.gridColor = Color.GRAY
         table.selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
 
         // Custom Header
@@ -118,8 +179,15 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
                             val statusCode = tableModel.getValueAt(modelRow, 3) as Short
 
                             if (!isSelected) {
-                                component.background = getRowColor(statusCode.toInt(), method)
-                                component.foreground = Color.BLACK // Ensure text is readable
+                                if (column == 3) {
+                                    component.background = getRowColor(statusCode.toInt(), method)
+                                    component.foreground =
+                                            Color.BLACK // Ensure text is readable on colored
+                                    // background
+                                } else {
+                                    component.background = table.background
+                                    component.foreground = table.foreground
+                                }
                             } else {
                                 // Keep selection color
                                 component.background = table.selectionBackground
@@ -142,6 +210,18 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
             table.columnModel.getColumn(i).cellRenderer = colorRenderer
         }
 
+        // Column Widths
+        table.columnModel.getColumn(0).preferredWidth = 50 // Rank
+        table.columnModel.getColumn(0).maxWidth = 70
+
+        table.columnModel.getColumn(1).preferredWidth = 70 // Method
+        table.columnModel.getColumn(1).maxWidth = 100
+
+        table.columnModel.getColumn(2).preferredWidth = 600 // URL (Expand)
+
+        table.columnModel.getColumn(3).preferredWidth = 80 // Status Code
+        table.columnModel.getColumn(3).maxWidth = 100
+
         // Sorting & Filtering
         sorter = TableRowSorter(tableModel)
         table.rowSorter = sorter
@@ -149,16 +229,7 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
         searchField.addKeyListener(
                 object : KeyAdapter() {
                     override fun keyReleased(e: KeyEvent?) {
-                        val text = searchField.text
-                        if (text.trim().isEmpty()) {
-                            sorter.rowFilter = null
-                        } else {
-                            try {
-                                sorter.rowFilter = RowFilter.regexFilter("(?i)$text")
-                            } catch (ex: java.util.regex.PatternSyntaxException) {
-                                // Ignore invalid regex
-                            }
-                        }
+                        updateFilter(searchField.text)
                     }
                 }
         )
@@ -253,6 +324,152 @@ class AnomalyRankResultsTable(private val api: MontoyaApi, private val results: 
                 }
             }
             else -> Color.WHITE
+        }
+    }
+
+    private fun appendFilter(text: String, isOperator: Boolean) {
+        var current = searchField.text
+
+        if (current.isNotEmpty() && !current.endsWith(" ")) {
+            if (!isOperator) {
+                // Auto-add AND if appending a new condition to an existing non-empty filter
+                current += " AND "
+            } else {
+                current += " "
+            }
+        }
+
+        searchField.text = current + text
+        updateFilter(searchField.text)
+        searchField.requestFocusInWindow()
+    }
+
+    private fun updateFilter(text: String) {
+        if (text.trim().isEmpty()) {
+            sorter.rowFilter = null
+            return
+        }
+
+        try {
+            sorter.rowFilter = parseFilter(text)
+        } catch (e: Exception) {
+            // Fallback to simple regex if parsing fails (or just ignore)
+        }
+    }
+
+    private fun parseFilter(text: String): RowFilter<DefaultTableModel, Int>? {
+        // Split by OR
+        val orParts = text.split(Regex("\\s+OR\\s+", RegexOption.IGNORE_CASE))
+        val orFilters = ArrayList<RowFilter<DefaultTableModel, Int>>()
+
+        for (orPart in orParts) {
+            // Split by AND
+            val andParts = orPart.split(Regex("\\s+AND\\s+", RegexOption.IGNORE_CASE))
+            val andFilters = ArrayList<RowFilter<DefaultTableModel, Int>>()
+
+            for (token in andParts) {
+                val trimmedToken = token.trim()
+                if (trimmedToken.isNotEmpty()) {
+                    val filter = createTokenFilter(trimmedToken)
+                    if (filter != null) {
+                        andFilters.add(filter)
+                    }
+                }
+            }
+
+            if (andFilters.isNotEmpty()) {
+                if (andFilters.size == 1) {
+                    orFilters.add(andFilters[0])
+                } else {
+                    orFilters.add(RowFilter.andFilter(andFilters))
+                }
+            }
+        }
+
+        if (orFilters.isEmpty()) return null
+        if (orFilters.size == 1) return orFilters[0]
+        return RowFilter.orFilter(orFilters)
+    }
+
+    private fun createTokenFilter(token: String): RowFilter<DefaultTableModel, Int>? {
+        val parts = token.split(":", limit = 2)
+        try {
+            if (parts.size == 2) {
+                val key = parts[0].trim().lowercase()
+                val value = parts[1].trim()
+                if (value.isEmpty()) return null
+
+                val colIndex =
+                        when (key) {
+                            "rank" -> 0
+                            "method" -> 1
+                            "url", "path" -> 2
+                            "status", "code", "statuscode" -> 3
+                            else -> -1
+                        }
+
+                if (colIndex != -1) {
+                    // Handle numeric comparisons for Rank (0) and Status (3)
+                    if (colIndex == 0 || colIndex == 3) {
+                        return createNumericFilter(colIndex, value)
+                                ?: RowFilter.regexFilter("(?i)$value", colIndex)
+                    }
+                    return RowFilter.regexFilter("(?i)$value", colIndex)
+                }
+            }
+            // Default: search everywhere
+            return RowFilter.regexFilter("(?i)$token")
+        } catch (e: java.util.regex.PatternSyntaxException) {
+            return null
+        }
+    }
+
+    private fun createNumericFilter(
+            colIndex: Int,
+            valueStr: String
+    ): RowFilter<DefaultTableModel, Int>? {
+        // Detect operator: >=, <=, >, <, or simple number
+        val operator: String
+        val numberPart: String
+
+        if (valueStr.startsWith(">=")) {
+            operator = ">="
+            numberPart = valueStr.substring(2).trim()
+        } else if (valueStr.startsWith("<=")) {
+            operator = "<="
+            numberPart = valueStr.substring(2).trim()
+        } else if (valueStr.startsWith(">")) {
+            operator = ">"
+            numberPart = valueStr.substring(1).trim()
+        } else if (valueStr.startsWith("<")) {
+            operator = "<"
+            numberPart = valueStr.substring(1).trim()
+        } else {
+            // Not a comparison filter, return null so regex fallback handles it
+            return null
+        }
+
+        val targetValue = numberPart.toIntOrNull() ?: return null
+
+        return object : RowFilter<DefaultTableModel, Int>() {
+            override fun include(entry: Entry<out DefaultTableModel, out Int>): Boolean {
+                val cellValue = entry.getValue(colIndex)
+                val numValue =
+                        when (cellValue) {
+                            is Int -> cellValue
+                            is Short -> cellValue.toInt()
+                            is Number -> cellValue.toInt()
+                            else -> cellValue.toString().toIntOrNull() ?: return false
+                        }
+
+                return when (operator) {
+                    ">=" -> numValue >= targetValue
+                    "<=" -> numValue <= targetValue
+                    ">" -> numValue > targetValue
+                    "<" -> numValue < targetValue
+                    else -> false
+                }
+            }
         }
     }
 
