@@ -11,7 +11,7 @@ plugins {
 // Change this to reflect your package namespace
 group = "com.nickcoblentz.montoya"
 
-version = "0.1.8"
+version = "0.2.0"
 
 repositories {
     // add maven local in case you want to build some reusable libraries and host them within your
@@ -36,5 +36,11 @@ dependencies {
 }
 
 tasks.test { useJUnitPlatform() }
+
+kotlin { jvmToolchain(24) }
+
+tasks.named("build") {
+    dependsOn("shadowJar")
+}
 
 kotlin { jvmToolchain(24) }
