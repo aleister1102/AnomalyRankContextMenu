@@ -11,7 +11,7 @@ plugins {
 // Change this to reflect your package namespace
 group = "com.nickcoblentz.montoya"
 
-version = "0.2.0"
+version = "0.2.1"
 
 repositories {
     // add maven local in case you want to build some reusable libraries and host them within your
